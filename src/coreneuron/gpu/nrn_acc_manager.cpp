@@ -29,7 +29,7 @@
 #endif
 
 #if defined(CORENEURON_ENABLE_GPU) && defined(CORENEURON_PREFER_OPENMP_OFFLOAD) && defined(_OPENMP)
-#include <cuda_runtime_api.h>
+#include <musa_runtime_api.h>
 #endif
 
 #if __has_include(<cxxabi.h>)
@@ -227,8 +227,8 @@ void cnrn_target_delete_update_present_table(void const* h_ptr, std::size_t len)
 int cnrn_target_get_num_devices() {
 #if defined(CORENEURON_ENABLE_GPU) && !defined(CORENEURON_PREFER_OPENMP_OFFLOAD) && \
     defined(_OPENACC)
-    // choose nvidia GPU by default
-    acc_device_t device_type = acc_device_nvidia;
+    // choose GPU device by default
+    acc_device_t device_type = acc_device_default;
     // check how many gpu devices available per node
     return acc_get_num_devices(device_type);
 #elif defined(CORENEURON_ENABLE_GPU) && defined(CORENEURON_PREFER_OPENMP_OFFLOAD) && \
@@ -243,7 +243,7 @@ int cnrn_target_get_num_devices() {
 void cnrn_target_set_default_device(int device_num) {
 #if defined(CORENEURON_ENABLE_GPU) && !defined(CORENEURON_PREFER_OPENMP_OFFLOAD) && \
     defined(_OPENACC)
-    acc_set_device_num(device_num, acc_device_nvidia);
+    acc_set_device_num(device_num, acc_device_default);
 #elif defined(CORENEURON_ENABLE_GPU) && defined(CORENEURON_PREFER_OPENMP_OFFLOAD) && \
     defined(_OPENMP)
     omp_set_default_device(device_num);
@@ -251,8 +251,8 @@ void cnrn_target_set_default_device(int device_num) {
     // is not enough: there were errors on some nodes when not-the-0th GPU was
     // used. These seemed to be related to the NMODL instance structs, which are
     // allocated using cudaMallocManaged.
-    auto const cuda_code = cudaSetDevice(device_num);
-    assert(cuda_code == cudaSuccess);
+    auto const musa_code = musaSetDevice(device_num);
+    assert(musa_code == musaSuccess);
 #else
     throw std::runtime_error(
         "cnrn_target_set_default_device() not implemented without OpenACC/OpenMP and gpu build");
@@ -1444,7 +1444,7 @@ void init_gpu() {
 
     // if no gpu found, can't run on GPU
     if (num_devices_per_node == 0) {
-        nrn_fatal_error("\n ERROR : Enabled GPU execution but couldn't find NVIDIA GPU!\n");
+        nrn_fatal_error("\n ERROR : Enabled GPU execution but couldn't find MUSA GPU!\n");
     }
 
     if (corenrn_param.num_gpus != 0) {

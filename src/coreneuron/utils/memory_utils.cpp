@@ -36,7 +36,7 @@
 #endif
 
 #ifdef CORENEURON_ENABLE_GPU
-#include "cuda_profiler_api.h"
+#include <musa_runtime_api.h>
 #endif
 
 namespace coreneuron {
@@ -112,9 +112,9 @@ void report_mem_usage(const char* message, bool all_ranks) {
 #ifdef CORENEURON_ENABLE_GPU
         if (corenrn_param.gpu) {
             size_t free_byte, total_byte;
-            cudaError_t cuda_status = cudaMemGetInfo(&free_byte, &total_byte);
-            if (cudaSuccess != cuda_status) {
-                std::printf("cudaMemGetInfo failed: %s\n", cudaGetErrorString(cuda_status));
+            musaError_t musa_status = musaMemGetInfo(&free_byte, &total_byte);
+            if (musaSuccess != musa_status) {
+                std::printf("musaMemGetInfo failed: %s\n", musaGetErrorString(musa_status));
             }
             constexpr double MiB{1. / (1024. * 1024.)};
             std::printf(" GPU Memory (MiBs) : Used = %f, Free = %f, Total = %f\n",

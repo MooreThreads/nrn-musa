@@ -38,9 +38,9 @@ option(CORENRN_ENABLE_SPLAYTREE_QUEUING "Enable use of Splay tree for spike queu
 option(CORENRN_ENABLE_NET_RECEIVE_BUFFER "Enable event buffering in net_receive function" ON)
 option(CORENRN_ENABLE_CALIPER_PROFILING "Enable Caliper instrumentation" OFF)
 option(CORENRN_ENABLE_LIKWID_PROFILING "Enable LIKWID instrumentation" OFF)
-option(CORENRN_ENABLE_CUDA_UNIFIED_MEMORY "Enable CUDA unified memory support" OFF)
+option(CORENRN_ENABLE_CUDA_UNIFIED_MEMORY "Enable GPU unified memory support" OFF)
 option(CORENRN_ENABLE_UNIT_TESTS "Enable unit tests execution" ON)
-option(CORENRN_ENABLE_GPU "Enable GPU support using OpenACC or OpenMP" OFF)
+option(CORENRN_ENABLE_GPU "Enable GPU support using MUSA or OpenMP" OFF)
 option(CORENRN_ENABLE_SHARED "Enable shared library build" ON)
 option(CORENRN_ENABLE_PRCELLSTATE "Enable NRN_PRCELLSTATE debug feature" OFF)
 
@@ -51,7 +51,15 @@ set(LIKWID_DIR
     ""
     CACHE PATH "Path to likwid performance analysis suite")
 
-# Older CMake versions label NVHPC as PGI, newer ones label it as NVHPC.
+# Check for MUSA compiler (mcc)
+find_program(MUSA_MCC_COMPILER mcc PATHS /usr/local/musa/bin ENV PATH)
+if(MUSA_MCC_COMPILER)
+  set(CORENRN_HAVE_MUSA_COMPILER ON)
+else()
+  set(CORENRN_HAVE_MUSA_COMPILER OFF)
+endif()
+
+# Keep NVHPC detection for compatibility but it's not required for MUSA
 if(${CMAKE_CXX_COMPILER_ID} STREQUAL "PGI" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "NVHPC")
   set(CORENRN_HAVE_NVHPC_COMPILER ON)
 else()
@@ -60,52 +68,23 @@ endif()
 
 set(CORENRN_ACCELERATOR_OFFLOAD "Disabled")
 if(CORENRN_ENABLE_GPU)
-  # Older CMake versions than 3.15 have not been tested for GPU/CUDA/OpenACC support after
-  # https://github.com/BlueBrain/CoreNeuron/pull/609.
-
-  # Fail hard and early if we don't have the PGI/NVHPC compiler.
-  if(NOT CORENRN_HAVE_NVHPC_COMPILER)
+  # For MUSA GPU support, we need the mcc compiler
+  if(NOT CORENRN_HAVE_MUSA_COMPILER)
     message(
       FATAL_ERROR
-        "GPU support is available via OpenACC using PGI/NVIDIA compilers."
-        " Use NVIDIA HPC SDK with -DCMAKE_C_COMPILER=nvc -DCMAKE_CUDA_COMPILER=nvcc -DCMAKE_CXX_COMPILER=nvc++"
+        "GPU support requires Moore Threads MUSA toolkit."
+        " Please install MUSA SDK and ensure mcc is in PATH."
     )
   endif()
 
-  # Set some sensible default CUDA architectures.
-  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 70 80)
-    message(STATUS "Setting default CUDA architectures to ${CMAKE_CUDA_ARCHITECTURES}")
+  # Set MUSA architectures (mp_21 for S2000/S3000, mp_22 for S4000)
+  if(NOT DEFINED CMAKE_MUSA_ARCHITECTURES)
+    set(CMAKE_MUSA_ARCHITECTURES mp_22)
+    message(STATUS "Setting default MUSA architectures to ${CMAKE_MUSA_ARCHITECTURES}")
   endif()
 
-  # See https://gitlab.kitware.com/cmake/cmake/-/issues/23081, this should not be needed according
-  # to the CMake documentation, but it is not clear that any version behaves as documented.
-  if(DEFINED CMAKE_CUDA_HOST_COMPILER)
-    unset(ENV{CUDAHOSTCXX})
-  endif()
-
-  # Enable CUDA language support.
-  enable_language(CUDA)
-
-  # nvc++ -cuda implicitly links dynamically to libcudart.so. Setting this makes sure that CMake
-  # does not add -lcudart_static and trigger errors due to mixed dynamic/static linkage.
-  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
-
-  # ~~~
-  # Needed for the Eigen GPU support Warning suppression (Eigen GPU-related):
-  # 3057 : Warning on ignoring __host__ annotation in some functions
-  # 3085 : Warning on redeclaring a __host__ function as __host__ __device__
-  # ~~~
-  set(CMAKE_CUDA_FLAGS
-      "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -Xcudafe --diag_suppress=3057,--diag_suppress=3085"
-  )
-
-  # NMODL supports both OpenACC and OpenMP target offload
-  if(CORENRN_ENABLE_OPENMP AND CORENRN_ENABLE_OPENMP_OFFLOAD)
-    set(CORENRN_ACCELERATOR_OFFLOAD "OpenMP")
-  else()
-    set(CORENRN_ACCELERATOR_OFFLOAD "OpenACC")
-  endif()
+  # NMODL supports OpenMP target offload for MUSA
+  set(CORENRN_ACCELERATOR_OFFLOAD "OpenMP")
 endif()
 
 # =============================================================================
@@ -335,10 +314,8 @@ set(CORENEURON_BUILTIN_MODFILES
 # coreneuron GPU library
 # =============================================================================
 if(CORENRN_ENABLE_GPU)
-  # Only compile the explicit CUDA implementation of the Hines solver in GPU builds. Because of
-  # https://forums.developer.nvidia.com/t/cannot-dynamically-load-a-shared-library-containing-both-openacc-and-cuda-code/210972
-  # this cannot be included in the same shared library as the rest of the OpenACC code.
-  set(CORENEURON_CUDA_FILES ${CMAKE_CURRENT_SOURCE_DIR}/permute/cellorder.cu)
+  # Compile the explicit MUSA implementation of the Hines solver in GPU builds.
+  set(CORENEURON_CUDA_FILES ${CMAKE_CURRENT_SOURCE_DIR}/permute/cellorder.mu)
 endif()
 
 # =============================================================================
@@ -388,13 +365,38 @@ if(CORENRN_ENABLE_OPENMP)
   # remove the last two lines below once we get rid of the mechanism building Makefile.
 endif()
 if(CORENRN_ENABLE_GPU)
-  set(coreneuron_cuda_target coreneuron-cuda)
-  add_library(coreneuron-cuda ${COMPILE_LIBRARY_TYPE} ${CORENEURON_CUDA_FILES})
-  set_target_properties(coreneuron-cuda PROPERTIES EXPORT_NAME corenrn-cuda)
-  target_link_libraries(coreneuron-core PUBLIC coreneuron-cuda)
-  # list() commands don't propagate to parent scope
+  # Build MUSA GPU library using mcc compiler
+  set(coreneuron_cuda_target coreneuron-musa)
+  # Use custom command to compile .mu files with mcc
+  set(MUSA_OBJECT_FILE ${CMAKE_CURRENT_BINARY_DIR}/cellorder_musa.o)
+  # Collect compile definitions as -D flags
+  set(MUSA_COMPILE_DEFS "")
+  foreach(def ${CORENRN_COMPILE_DEFS})
+    list(APPEND MUSA_COMPILE_DEFS "-D${def}")
+  endforeach()
+  add_custom_command(
+    OUTPUT ${MUSA_OBJECT_FILE}
+    COMMAND ${MUSA_MCC_COMPILER}
+      -c ${CMAKE_CURRENT_SOURCE_DIR}/permute/cellorder.mu
+      -o ${MUSA_OBJECT_FILE}
+      -std=c++17
+      -I${PROJECT_SOURCE_DIR}/src
+      -I${CMAKE_BINARY_DIR}/generated
+      -I${MUSAToolkit_INCLUDE_DIRS}
+      --offload-arch=${CMAKE_MUSA_ARCHITECTURES}
+      -fPIC
+      ${MUSA_COMPILE_DEFS}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/permute/cellorder.mu
+    COMMENT "Compiling cellorder.mu with mcc"
+  )
+  add_custom_target(cellorder_musa_obj DEPENDS ${MUSA_OBJECT_FILE})
+  add_library(coreneuron-musa ${COMPILE_LIBRARY_TYPE} ${MUSA_OBJECT_FILE})
+  set_target_properties(coreneuron-musa PROPERTIES EXPORT_NAME corenrn-musa LINKER_LANGUAGE CXX)
+  add_dependencies(coreneuron-musa cellorder_musa_obj)
+  target_link_libraries(coreneuron-musa PUBLIC ${MUSAToolkit_LIBRARIES})
+  target_link_libraries(coreneuron-core PUBLIC coreneuron-musa)
   set(CORENRN_INSTALL_LIB_TARGETS
-      "coreneuron-core;coreneuron-cuda"
+      "coreneuron-core;coreneuron-musa"
       PARENT_SCOPE)
 else()
   set_target_properties(coreneuron-core PROPERTIES EXPORT_NAME corenrn)
@@ -540,7 +542,7 @@ add_dependencies(builtin-libcorenrnmech nrniv-core)
 set_target_properties(builtin-libcorenrnmech PROPERTIES IMPORTED_LOCATION "${corenrn_mech_library}")
 
 if(CORENRN_ENABLE_GPU)
-  separate_arguments(CORENRN_ACC_FLAGS UNIX_COMMAND "${NVHPC_ACC_COMP_FLAGS}")
+  separate_arguments(CORENRN_ACC_FLAGS UNIX_COMMAND "${MUSA_ACC_COMP_FLAGS}")
   target_compile_options(coreneuron-core PRIVATE ${CORENRN_ACC_FLAGS})
 endif()
 
@@ -704,7 +706,7 @@ message(STATUS "NMODL PATH          | ${CORENRN_NMODL_BINARY}")
 message(STATUS "NMODL FLAGS         | ${CORENRN_NMODL_FLAGS}")
 message(STATUS "GPU Support         | ${CORENRN_ENABLE_GPU}")
 if(CORENRN_ENABLE_GPU)
-  message(STATUS "  CUDA              | ${CUDAToolkit_LIBRARY_DIR}")
+  message(STATUS "  MUSA              | ${MUSAToolkit_LIBRARY_DIR}")
   message(STATUS "  Offload           | ${CORENRN_ACCELERATOR_OFFLOAD}")
   message(STATUS "  Unified Memory    | ${CORENRN_ENABLE_CUDA_UNIFIED_MEMORY}")
 endif()

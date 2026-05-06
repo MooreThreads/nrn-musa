@@ -19,8 +19,8 @@
 #include <caliper/cali.h>
 #endif
 
-#ifdef CORENEURON_CUDA_PROFILING
-#include <cuda_profiler_api.h>
+#ifdef CORENEURON_MUSA_PROFILING
+#include <musa_runtime_api.h>
 #endif
 
 #if defined(CRAYPAT)
@@ -227,19 +227,19 @@ struct Caliper {
 
 #endif
 
-#ifdef CORENEURON_CUDA_PROFILING
+#ifdef CORENEURON_MUSA_PROFILING
 
-struct CudaProfiling {
+struct MusaProfiling {
     inline static void phase_begin(const char* name){};
 
     inline static void phase_end(const char* name){};
 
     inline static void start_profile() {
-        cudaProfilerStart();
+        musaProfilerStart();
     };
 
     inline static void stop_profile() {
-        cudaProfilerStop();
+        musaProfilerStop();
     };
 
     inline static void init_profile(){};
@@ -334,8 +334,8 @@ using InstrumentorImpl = detail::Instrumentor<
 #if defined NRN_CALIPER
     detail::Caliper,
 #endif
-#ifdef CORENEURON_CUDA_PROFILING
-    detail::CudaProfiling,
+#ifdef CORENEURON_MUSA_PROFILING
+    detail::MusaProfiling,
 #endif
 #if defined(CRAYPAT)
     detail::CrayPat,

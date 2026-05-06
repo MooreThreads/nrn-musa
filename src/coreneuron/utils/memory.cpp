@@ -9,7 +9,7 @@
 #include "coreneuron/utils/memory.h"
 
 #ifdef CORENEURON_ENABLE_GPU
-#include <cuda_runtime_api.h>
+#include <musa_runtime_api.h>
 #endif
 
 #include <cassert>
@@ -30,8 +30,8 @@ void* allocate_unified(std::size_t num_bytes) {
     if (corenrn_param.gpu) {
         // Allocate managed/unified memory.
         void* ptr{nullptr};
-        auto const code = cudaMallocManaged(&ptr, num_bytes);
-        assert(code == cudaSuccess);
+        auto const code = musaMallocManaged(&ptr, num_bytes);
+        assert(code == musaSuccess);
         return ptr;
     }
 #endif
@@ -46,8 +46,8 @@ void deallocate_unified(void* ptr, std::size_t num_bytes) {
 #ifdef CORENEURON_ENABLE_GPU
     if (corenrn_param.gpu) {
         // Deallocate managed/unified memory.
-        auto const code = cudaFree(ptr);
-        assert(code == cudaSuccess);
+        auto const code = musaFree(ptr);
+        assert(code == musaSuccess);
         return;
     }
 #endif

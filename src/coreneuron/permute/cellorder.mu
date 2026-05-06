@@ -1,0 +1,107 @@
+/*
+# =============================================================================
+# Copyright (c) 2016 - 2021 Blue Brain Project/EPFL
+#
+# See top-level LICENSE file for details.
+# =============================================================================
+*/
+
+#include "coreneuron/utils/utils_musa.h"
+#include "coreneuron/permute/cellorder.hpp"
+#include "coreneuron/network/tnode.hpp"
+#include "coreneuron/sim/multicore.hpp"
+
+namespace coreneuron {
+
+__device__ void triang_interleaved2_device(NrnThread* nt,
+                                           int icore,
+                                           int ncycle,
+                                           int* stride,
+                                           int lastnode) {
+    int icycle = ncycle - 1;
+    int istride = stride[icycle];
+    int i = lastnode - istride + icore;
+
+    int ip;
+    double p;
+    while (icycle >= 0) {
+        if (icore < istride) {
+            ip = nt->_v_parent_index[i];
+            p = nt->_actual_a[i] / nt->_actual_d[i];
+            atomicAdd(&nt->_actual_d[ip], -p * nt->_actual_b[i]);
+            atomicAdd(&nt->_actual_rhs[ip], -p * nt->_actual_rhs[i]);
+        }
+        --icycle;
+        istride = stride[icycle];
+        i -= istride;
+    }
+}
+
+__device__ void bksub_interleaved2_device(NrnThread* nt,
+                                          int root,
+                                          int lastroot,
+                                          int icore,
+                                          int ncycle,
+                                          int* stride,
+                                          int firstnode) {
+    for (int i = root; i < lastroot; i += warpsize) {
+        nt->_actual_rhs[i] /= nt->_actual_d[i];
+    }
+
+    int i = firstnode + icore;
+
+    int ip;
+    for (int icycle = 0; icycle < ncycle; ++icycle) {
+        int istride = stride[icycle];
+        if (icore < istride) {
+            ip = nt->_v_parent_index[i];
+            nt->_actual_rhs[i] -= nt->_actual_b[i] * nt->_actual_rhs[ip];
+            nt->_actual_rhs[i] /= nt->_actual_d[i];
+        }
+        i += istride;
+    }
+}
+
+__global__ void solve_interleaved2_kernel(NrnThread* nt, InterleaveInfo* ii, int ncore) {
+    int icore = blockDim.x * blockIdx.x + threadIdx.x;
+
+    int* ncycles = ii->cellsize;
+    int* stridedispl = ii->stridedispl;
+    int* strides = ii->stride;
+    int* rootbegin = ii->firstnode;
+    int* nodebegin = ii->lastnode;
+
+    while (icore < ncore) {
+        int iwarp = icore / warpsize;
+        int ic = icore & (warpsize - 1);
+        int ncycle = ncycles[iwarp];
+        int* stride = strides + stridedispl[iwarp];
+        int root = rootbegin[iwarp];
+        int lastroot = rootbegin[iwarp + 1];
+        int firstnode = nodebegin[iwarp];
+        int lastnode = nodebegin[iwarp + 1];
+
+        triang_interleaved2_device(nt, ic, ncycle, stride, lastnode);
+        bksub_interleaved2_device(nt, root + ic, lastroot, ic, ncycle, stride, firstnode);
+
+        icore += blockDim.x * gridDim.x;
+    }
+}
+
+void solve_interleaved2_launcher(NrnThread* nt, InterleaveInfo* info, int ncore, void* stream) {
+    auto musa_stream = static_cast<musaStream_t>(stream);
+
+    int threadsPerBlock = warpsize;
+    const auto maxBlocksPerGrid = 65535;
+    int provisionalBlocksPerGrid = (ncore + threadsPerBlock - 1) / threadsPerBlock;
+    int blocksPerGrid = provisionalBlocksPerGrid <= maxBlocksPerGrid ? provisionalBlocksPerGrid
+                                                                     : maxBlocksPerGrid;
+
+    solve_interleaved2_kernel<<<blocksPerGrid, threadsPerBlock, 0, musa_stream>>>(nt, info, ncore);
+
+    musaStreamSynchronize(musa_stream);
+
+    CHECKLAST("solve_interleaved2_launcher");
+}
+
+}  // namespace coreneuron

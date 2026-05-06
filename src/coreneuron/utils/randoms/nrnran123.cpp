@@ -23,7 +23,7 @@
 
 // Defining these attributes seems to help nvc++ in OpenMP target offload mode.
 #if defined(CORENEURON_ENABLE_GPU) && defined(CORENEURON_PREFER_OPENMP_OFFLOAD) && \
-    defined(_OPENMP) && defined(__CUDACC__)
+    defined(_OPENMP) && defined(__MUSACC__)
 #define CORENRN_HOST_DEVICE __host__ __device__
 #else
 #define CORENRN_HOST_DEVICE
@@ -83,7 +83,7 @@ std::size_t g_instance_count{};
 }  // namespace
 
 namespace random123_global {
-#ifdef __CUDACC__
+#ifdef __MUSACC__
 #define g_k_qualifiers __device__ __constant__
 #else
 #define g_k_qualifiers
@@ -130,14 +130,14 @@ void nrnran123_set_globalindex(uint32_t gix) {
     if (g_k.v[0] != gix) {
         g_k.v[0] = gix;
         if (coreneuron::gpu_enabled()) {
-#ifdef __CUDACC__
+#ifdef __MUSACC__
             {
-                auto const code = cudaMemcpyToSymbol(g_k, &g_k, sizeof(g_k));
-                assert(code == cudaSuccess);
+                auto const code = musaMemcpyToSymbol(g_k, &g_k, sizeof(g_k));
+                assert(code == musaSuccess);
             }
             {
-                auto const code = cudaDeviceSynchronize();
-                assert(code == cudaSuccess);
+                auto const code = musaDeviceSynchronize();
+                assert(code == musaSuccess);
             }
 #else
             nrn_pragma_acc(update device(g_k))
@@ -149,7 +149,7 @@ void nrnran123_set_globalindex(uint32_t gix) {
 
 void nrnran123_initialise_global_state_on_device() {
     if (coreneuron::gpu_enabled()) {
-#ifndef __CUDACC__
+#ifndef __MUSACC__
         nrn_pragma_acc(enter data copyin(random123_global::g_k))
 #endif
     }
@@ -157,7 +157,7 @@ void nrnran123_initialise_global_state_on_device() {
 
 void nrnran123_destroy_global_state_on_device() {
     if (coreneuron::gpu_enabled()) {
-#ifndef __CUDACC__
+#ifndef __MUSACC__
         nrn_pragma_acc(exit data delete (random123_global::g_k))
 #endif
     }
@@ -180,7 +180,7 @@ nrnran123_State* nrnran123_newstream3(uint32_t id1,
     // this feature then we could always use coreneuron::unified_allocator.
 #ifndef CORENEURON_ENABLE_GPU
     if (use_unified_memory) {
-        throw std::runtime_error("Tried to use CUDA unified memory in a non-GPU build.");
+        throw std::runtime_error("Tried to use MUSA unified memory in a non-GPU build.");
     }
 #endif
     nrnran123_State* s{nullptr};
@@ -205,7 +205,7 @@ nrnran123_State* nrnran123_newstream3(uint32_t id1,
 void nrnran123_deletestream(nrnran123_State* s, bool use_unified_memory) {
 #ifndef CORENEURON_ENABLE_GPU
     if (use_unified_memory) {
-        throw std::runtime_error("Tried to use CUDA unified memory in a non-GPU build.");
+        throw std::runtime_error("Tried to use MUSA unified memory in a non-GPU build.");
     }
 #endif
     {

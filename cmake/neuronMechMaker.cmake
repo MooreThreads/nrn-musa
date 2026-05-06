@@ -131,9 +131,7 @@ To build a mechanism, put this in your ``CMakeLists.txt``:
 
 .. note::
 
-    If you want to enable coreNEURON's GPU support, you need to first build NEURON itself with ``CORENRN_ENABLE_GPU=ON`` and customize the ``CMAKE_C_COMPILER``, ``CMAKE_CXX_COMPILER``, and ``CMAKE_CUDA_COMPILER`` variables.
-    Currently only NVHPC is supported.
-    You also need to add ``CUDA`` to the ``LANGUAGES`` above.
+    If you want to enable coreNEURON's GPU support, you need to first build NEURON itself with ``CORENRN_ENABLE_GPU=ON`` and ensure the Moore Threads MUSA SDK is installed with ``mcc`` in PATH.
 
 Then you can configure your mechanisms using:
 
@@ -287,8 +285,8 @@ function(create_nrnmech)
   if(NOT NRN_MECH_NMODL_CORENEURON_EXTRA_ARGS)
     set(NRN_MECH_NMODL_CORENEURON_EXTRA_ARGS passes --inline)
     list(APPEND NRN_MECH_NMODL_CORENEURON_EXTRA_ARGS host --c)
-    # OpenACC flags
-    if(CMAKE_CUDA_COMPILER)
+    # GPU offload flags for MUSA
+    if(CORENRN_ENABLE_GPU)
       list(APPEND NRN_MECH_NMODL_CORENEURON_EXTRA_ARGS acc --oacc)
     endif()
   endif()
@@ -489,27 +487,15 @@ function(create_nrnmech)
     target_link_libraries(core${TARGET_LIBRARY_NAME} PUBLIC neuron::corenrn)
     target_compile_definitions(core${TARGET_LIBRARY_NAME} PUBLIC ADDITIONAL_MECHS)
 
-    if(CMAKE_CUDA_COMPILER)
-      # Find the cuda toolkit and openacc (if not found already)
-      if(NOT CUDAToolkit_FOUND)
-        find_package(CUDAToolkit ${_CORENEURON_MIN_CUDA_TOOLKIT_VERSION} REQUIRED)
+    if(MUSA_MCC_COMPILER OR CORENRN_ENABLE_GPU)
+      # Find the MUSA toolkit (if not found already)
+      list(APPEND CMAKE_MODULE_PATH "/usr/local/musa/cmake")
+      if(NOT MUSAToolkit_FOUND)
+        find_package(MUSAToolkit REQUIRED)
       endif()
-      if(NOT OpenACC_FOUND)
-        find_package(OpenACC REQUIRED)
-      endif()
-      # Random123 does not play nicely with NVHPC
-      target_compile_definitions(core${TARGET_LIBRARY_NAME} PUBLIC R123_USE_INTRIN_H=0)
-      # if using NVHPC, link corenrnmech lib to the CUDA runtime and openacc
-      if("${LIBRARY_TYPE}" STREQUAL "STATIC")
-        target_link_libraries(core${TARGET_LIBRARY_NAME} PUBLIC CUDA::cudart_static
-                                                                OpenACC::OpenACC_CXX)
-      elseif("${LIBRARY_TYPE}" STREQUAL "SHARED")
-        target_link_libraries(core${TARGET_LIBRARY_NAME} PUBLIC CUDA::cudart OpenACC::OpenACC_CXX)
-      else()
-        message(FATAL_ERROR "Unsupported library type for CUDA: ${LIBRARY_TYPE}")
-      endif()
-      # for some reason we need to add `-cuda` to nrnmech (which gets propagated to special-core)
-      target_link_options(core${TARGET_LIBRARY_NAME} PUBLIC "-cuda")
+      # Link corenrnmech lib to the MUSA runtime
+      target_link_libraries(core${TARGET_LIBRARY_NAME} PUBLIC ${MUSAToolkit_LIBRARIES})
+      target_include_directories(core${TARGET_LIBRARY_NAME} PUBLIC ${MUSAToolkit_INCLUDE_DIRS})
     endif()
 
     list(JOIN L_CORE_MECH_DECLARE "\n" MECH_DECLARE)
