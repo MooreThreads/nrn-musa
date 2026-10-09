@@ -1,48 +1,38 @@
-[![Build Status](https://dev.azure.com/neuronsimulator/nrn/_apis/build/status/neuronsimulator.nrn?branchName=master)](https://dev.azure.com/neuronsimulator/nrn/_build/latest?definitionId=1&branchName=master) [![Actions Status](https://github.com/neuronsimulator/nrn/actions/workflows/windows.yml/badge.svg?branch=master)](https://github.com/neuronsimulator/nrn/actions) [![Actions Status](https://github.com/neuronsimulator/nrn/workflows/NEURON%20CI/badge.svg)](https://github.com/neuronsimulator/nrn/actions) [![codecov](https://codecov.io/gh/neuronsimulator/nrn/branch/master/graph/badge.svg?token=T7PIDw6LrC)](https://codecov.io/gh/neuronsimulator/nrn) [![Documentation Status](https://readthedocs.org/projects/nrn/badge/?version=latest)](http://nrn.readthedocs.io/?badge=latest)
+# nrn-musa
 
-# NEURON
-NEURON is a simulator for models of neurons and networks of neuron. See [nrn.readthedocs.io](https://nrn.readthedocs.io) for documentation, tutorials, and announcements of courses and conferences. Installers are available on [GitHub Releases](https://github.com/neuronsimulator/nrn/releases) and the source code on [GitHub](https://github.com/neuronsimulator/nrn).
-Ask questions on our [Discussion Forum](https://github.com/neuronsimulator/nrn/discussions).
+`nrn-musa` is the Moore Threads MUSA maintenance line of
+[NEURON](https://github.com/neuronsimulator/nrn), a simulator for neurons and
+networks with Python and CoreNEURON interfaces.
 
-## Installing NEURON
+## Source and version
 
-NEURON provides binary installers for Linux, Mac and Windows platforms. You can find the latest
-installers for Mac and Windows [here](https://github.com/neuronsimulator/nrn/releases). For
-Linux and Mac you can install the official Python 3 wheel with:
+- Upstream project: NEURON
+- Inherited version: `v9.0.1`
+- Upstream baseline: `bab66a6675840360fadb31a251f4cf3a214856be`
+- Maintainer: Moore Threads
 
+The MUSA line adds MUSA-aware CoreNEURON GPU integration and memory paths while
+retaining the upstream simulator, Python, CPU, CUDA, tests, and documentation
+structure.
+
+## Requirements and build
+
+Use CMake 3.19 or newer, a C++17-capable compiler, Python, MPI when required,
+and the MUSA SDK for the MUSA backend. A typical configure/build outline is:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
 ```
-pip3 install neuron
-```
 
-If you want to build the latest version from source, we support **CMake** as build system.
-See detailed installation instructions: [docs/install/install_instructions.md](docs/install/install_instructions.md).
+Follow the project options for Python, CoreNEURON, and accelerator support.
+External numerical libraries and toolkits are supplied by the deployment.
 
-It is possible to install the Linux Python wheels on Windows via the Windows Subsystem for Linux (WSL) - check the installation instructions above.
+## Layout and contribution
 
-> [!NOTE]
-> **About NEURON >= 9.0**: If you are experiencing compilation errors while using
-> `nrnivmodl` with NEURON >=9.0, but not with previous 8.x releases, see
-> [Adapting MOD files for C++ with NEURON >= 9.0](docs/guide/porting_mechanisms_to_cpp.rst).
+Core sources are under `src/`, Python support under `share/lib/python/`, and
+CoreNEURON, tests, and CMake modules retain the upstream organization. Keep
+MUSA changes isolated and preserve upstream notices.
 
-## Documentation
-
-* See [https://nrn.readthedocs.io/en/latest/](https://nrn.readthedocs.io/en/latest/) for latest, nightly snapshot
-* See [docs/README.md](docs/README.md) for information on documentation (local build, Read the Docs setup)
-
-## Changelog
-
-Refer to [docs/changelog.md](docs/changelog.md)
-
-## Contributing to NEURON development
-
-Refer to [NEURON contribution guidelines](CONTRIBUTING.md)
-
-## Funding
-
-NEURON development is supported by NIH grant R01NS11613 (PIs R.A. McDougal and M.L. Hines at Yale University).
-
-Collaboration is provided by the Laboratory of Neural Microcircuitry (LNMC), a research center of the École polytechnique fédérale de Lausanne (EPFL), with funding from European Union's Horizon Europe Grant no. 101147319 (EBRAINS 2.0: A Research Infrastructure to Advance Neuroscience and Brain Health).
-
-## Past funding
-
-Until 2025, collaboration was provided by the Blue Brain Project, a research center of the École polytechnique fédérale de Lausanne (EPFL) with funding from the Swiss government's ETH Board of the Swiss Federal Institutes of Technology. Additional funding from the European Union Seventh Framework Program (FP7/20072013) under grant agreement no. 604102 (HBP), the European Union's Horizon 2020 Framework Programme for Research and Innovation under Specific Grant Agreement no. 720270 (Human Brain Project SGA1), no. 785907 (Human Brain Project SGA2), and no. 945539 (Human Brain Project SGA3).
+Moore Threads maintains this source line. See [LICENSE](LICENSE) for the
+applicable declaration.
